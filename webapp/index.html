@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Курсы валют</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --card: #ffffff;
+      --shadow: rgba(0,0,0,.08);
+      --divider: rgba(0,0,0,.06);
+    }
+    body[data-theme="dark"] {
+      --bg: #0f0f10;
+      --fg: #f1f1f1;
+      --muted: #a0a0a0;
+      --card: #161719;
+      --shadow: rgba(0,0,0,.5);
+      --divider: rgba(255,255,255,.06);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .wrap { padding: 16px; max-width: 640px; margin: 0 auto; }
+    .card {
+      padding: 16px;
+      border-radius: 14px;
+      background: var(--card);
+      box-shadow: 0 6px 20px var(--shadow);
+    }
+    h1 { margin: 0 0 12px; font-size: 18px; }
+    .subtitle { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+    .row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--divider);
+      font-size: 16px;
+    }
+    .row:last-child { border-bottom: none; }
+    .pair { font-weight: 600; }
+    .val { font-variant-numeric: tabular-nums; }
+    .foot { margin-top: 10px; color: var(--muted); font-size: 12px; }
+    .err { color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Курсы к <span id="base">—</span></h1>
+      <p class="subtitle" id="subtitle">Загружаем…</p>
+      <div id="list"></div>
+      <div class="foot" id="updated"></div>
+      <div class="foot err" id="error"></div>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    tg?.ready();
+    tg?.expand();
+
+    // Тема из Telegram
+    const isDark = tg?.colorScheme === 'dark';
+    document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+
+    // Читаем базу/символы из параметров URL:
+    // пример: https://yourapp.vercel.app/?base=USD&symbols=RUB,EUR,TRY,KZT
+    const url = new URL(location.href);
+    const BASE = (url.searchParams.get('base') || 'USD').toUpperCase();
+    const SYMBOLS = (url.searchParams.get('symbols') || 'RUB,EUR,TRY,KZT')
+      .split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
+    document.getElementById('base').textContent = BASE;
+    document.getElementById('subtitle').textContent = 'Нажмите «Обновить» для перезагрузки курсов.';
+
+    async function loadRates() {
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = '';
+      try {
+        const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(BASE)}&symbols=${encodeURIComponent(SYMBOLS.join(','))}`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const list = document.getElementById('list');
+        list.innerHTML = '';
+        SYMBOLS.forEach(sym => {
+          const rate = data?.rates?.[sym];
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.innerHTML = `<span class="pair">${BASE}/${sym}</span><span class="val">${rate ? Number(rate).toFixed(4) : '—'}</span>`;
+          list.appendChild(row);
+        });
+        const updated = document.getElementById('updated');
+        const dt = data?.date ? new Date(data.date + 'T00:00:00Z') : new Date();
+        updated.textContent = 'Обновлено: ' + dt.toLocaleString();
+      } catch (err) {
+        document.getElementById('error').textContent = 'Не удалось получить курсы. Попробуйте позже.';
+      }
+    }
+
+    // Кнопка внизу Telegram WebApp
+    tg?.MainButton.setText('Обновить').show();
+    tg?.MainButton.onClick(loadRates);
+
+    // Первая загрузка
+    loadRates();
+  </script>
+</body>
+</html>

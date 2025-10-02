@@ -1,0 +1,12 @@
+{
+  "name": "rates-telegram-webapp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "bot": "node bot.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "grammy": "^1.30.0"
+  }
+}
