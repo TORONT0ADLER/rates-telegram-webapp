@@ -1,29 +1,26 @@
-// Vercel Serverless Function. Работает на том же домене, что и твой WebApp.
-// => никаких CORS-проблем в Telegram WebView.
-
-export default async function handler(req, res) {
-  // чтобы ответ не кэшировался
+// webapp/api/rates.js
+// CommonJS для Vercel в статическом проекте
+module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
-  try {
-    // ====== УТИЛИТЫ ======
-    const jfetch = async (url) => {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-      return r.json();
-    };
-    const tfetch = async (url) => {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-      return r.text();
-    };
+  const jfetch = async (url) => {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    return r.json();
+  };
+  const tfetch = async (url) => {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    return r.text();
+  };
 
-    // ====== ФИАТ (exchangerate.host) ======
+  try {
+    // --- FIAT
     const fx = async (base, symbols) => {
       const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
         base
       )}&symbols=${encodeURIComponent(symbols.join(","))}`;
-      return jfetch(url); // { rates: { ... }, date: 'YYYY-MM-DD' }
+      return jfetch(url);
     };
 
     const [fxUsd, fxEur, fxCny] = await Promise.all([
@@ -31,10 +28,9 @@ export default async function handler(req, res) {
       fx("EUR", ["RUB"]),
       fx("CNY", ["RUB"]),
     ]);
-
     const USD_RUB = fxUsd?.rates?.RUB ?? null;
 
-    // ====== КРИПТА (CoinGecko) ======
+    // --- CRYPTO
     const cg = await jfetch(
       "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether&vs_currencies=usd,rub"
     );
@@ -42,7 +38,7 @@ export default async function handler(req, res) {
     const ETH_USD = cg?.ethereum?.usd ?? null;
     const USDT_RUB = cg?.tether?.rub ?? null;
 
-    // ====== ИНДЕКС S&P500 и Brent (Yahoo -> fallback Stooq) ======
+    // --- Index / Commodities
     const yahooClose = async (ticker) => {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
         ticker
@@ -52,7 +48,6 @@ export default async function handler(req, res) {
       return res?.indicators?.quote?.[0]?.close?.at(-1) ?? null;
     };
     const stooqClose = async (symbol) => {
-      // CSV: Symbol,Date,Time,Open,High,Low,Close,Volume
       const text = await tfetch(
         `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&i=d`
       );
@@ -81,29 +76,25 @@ export default async function handler(req, res) {
         BRENT_USD = await stooqClose("brn.f");
       } catch {}
     }
+
     const BRENT_RUB =
       BRENT_USD != null && USD_RUB != null ? BRENT_USD * USD_RUB : null;
 
-    // ====== Собираем пары ======
     const pairs = {
       "USD/RUB": USD_RUB,
       "EUR/RUB": fxEur?.rates?.RUB ?? null,
       "CNY/RUB": fxCny?.rates?.RUB ?? null,
       "USD/EUR": fxUsd?.rates?.EUR ?? null,
       "USD/JPY": fxUsd?.rates?.JPY ?? null,
-      "S&P500/USD": SPX_USD, // значение индекса в пунктах (условно "в USD")
+      "S&P500/USD": SPX_USD,
       "BTC/USD": BTC_USD,
       "ETH/USD": ETH_USD,
       "USDT/RUB": USDT_RUB,
       "Brent/RUB": BRENT_RUB,
     };
 
-    res.status(200).json({
-      ok: true,
-      updated: Date.now(),
-      pairs,
-    });
+    res.status(200).json({ ok: true, updated: Date.now(), pairs });
   } catch (e) {
     res.status(200).json({ ok: false, error: String(e) });
   }
-}
+};
