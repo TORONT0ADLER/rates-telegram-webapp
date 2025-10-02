@@ -1,116 +1,207 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Курсы валют</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --bg: #ffffff;
-      --fg: #111111;
-      --muted: #666666;
-      --card: #ffffff;
-      --shadow: rgba(0,0,0,.08);
-      --divider: rgba(0,0,0,.06);
-    }
-    body[data-theme="dark"] {
-      --bg: #0f0f10;
-      --fg: #f1f1f1;
-      --muted: #a0a0a0;
-      --card: #161719;
-      --shadow: rgba(0,0,0,.5);
-      --divider: rgba(255,255,255,.06);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--fg);
-      font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    }
-    .wrap { padding: 16px; max-width: 640px; margin: 0 auto; }
-    .card {
-      padding: 16px;
-      border-radius: 14px;
-      background: var(--card);
-      box-shadow: 0 6px 20px var(--shadow);
-    }
-    h1 { margin: 0 0 12px; font-size: 18px; }
-    .subtitle { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
-    .row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid var(--divider);
-      font-size: 16px;
-    }
-    .row:last-child { border-bottom: none; }
-    .pair { font-weight: 600; }
-    .val { font-variant-numeric: tabular-nums; }
-    .foot { margin-top: 10px; color: var(--muted); font-size: 12px; }
-    .err { color: #e74c3c; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Курсы к <span id="base">—</span></h1>
-      <p class="subtitle" id="subtitle">Загружаем…</p>
-      <div id="list"></div>
-      <div class="foot" id="updated"></div>
-      <div class="foot err" id="error"></div>
-    </div>
-  </div>
-
-  <script>
-    const tg = window.Telegram?.WebApp;
-    tg?.ready();
-    tg?.expand();
-
-    // Тема из Telegram
-    const isDark = tg?.colorScheme === 'dark';
-    document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
-
-    // Читаем базу/символы из параметров URL:
-    // пример: https://yourapp.vercel.app/?base=USD&symbols=RUB,EUR,TRY,KZT
-    const url = new URL(location.href);
-    const BASE = (url.searchParams.get('base') || 'USD').toUpperCase();
-    const SYMBOLS = (url.searchParams.get('symbols') || 'RUB,EUR,TRY,KZT')
-      .split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-
-    document.getElementById('base').textContent = BASE;
-    document.getElementById('subtitle').textContent = 'Нажмите «Обновить» для перезагрузки курсов.';
-
-    async function loadRates() {
-      const errorEl = document.getElementById('error');
-      errorEl.textContent = '';
-      try {
-        const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(BASE)}&symbols=${encodeURIComponent(SYMBOLS.join(','))}`;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const list = document.getElementById('list');
-        list.innerHTML = '';
-        SYMBOLS.forEach(sym => {
-          const rate = data?.rates?.[sym];
-          const row = document.createElement('div');
-          row.className = 'row';
-          row.innerHTML = `<span class="pair">${BASE}/${sym}</span><span class="val">${rate ? Number(rate).toFixed(4) : '—'}</span>`;
-          list.appendChild(row);
-        });
-        const updated = document.getElementById('updated');
-        const dt = data?.date ? new Date(data.date + 'T00:00:00Z') : new Date();
-        updated.textContent = 'Обновлено: ' + dt.toLocaleString();
-      } catch (err) {
-        document.getElementById('error').textContent = 'Не удалось получить курсы. Попробуйте позже.';
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Курсы</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #111;
+        --muted: #666;
+        --card: #fff;
+        --shadow: rgba(0, 0, 0, 0.08);
+        --divider: rgba(0, 0, 0, 0.06);
       }
-    }
+      body[data-theme="dark"] {
+        --bg: #0f0f10;
+        --fg: #f1f1f1;
+        --muted: #a0a0a0;
+        --card: #161719;
+        --shadow: rgba(0, 0, 0, 0.5);
+        --divider: rgba(255, 255, 255, 0.08);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+      }
+      .wrap {
+        padding: 16px;
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      .card {
+        padding: 16px;
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: 0 6px 20px var(--shadow);
+        margin-bottom: 14px;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        opacity: 0.9;
+      }
+      .subtitle {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--divider);
+      }
+      .row:last-child {
+        border-bottom: none;
+      }
+      .pair {
+        font-weight: 600;
+      }
+      .val {
+        font-variant-numeric: tabular-nums;
+      }
+      .foot {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .err {
+        color: #e74c3c;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Курсы</h1>
+        <p class="subtitle">
+          Нажмите «Обновить», чтобы подтянуть свежие значения.
+        </p>
 
-    // Кнопка внизу Telegram WebApp
-    tg?.MainButton.setText('Обновить').show();
-    tg?.MainButton.onClick(loadRates);
+        <h2>Фиат → RUB</h2>
+        <div id="fiat-list"></div>
 
-    // Первая загрузка
-    loadRates();
-  </script>
-</body>
+        <h2 style="margin-top: 12px">Крипто → USD</h2>
+        <div id="crypto-list"></div>
+
+        <div class="foot" id="updated"></div>
+        <div class="foot err" id="error"></div>
+      </div>
+    </div>
+
+    <script>
+      const tg = window.Telegram?.WebApp;
+      tg?.ready();
+      tg?.expand();
+      document.body.setAttribute(
+        "data-theme",
+        tg?.colorScheme === "dark" ? "dark" : "light"
+      );
+
+      // ---------- Конфиг пар ----------
+      const FIAT_PAIRS = [
+        { base: "USD", quote: "RUB" },
+        { base: "EUR", quote: "RUB" },
+        { base: "CNY", quote: "RUB" }, // юань
+      ];
+      // CoinGecko ids -> tickers
+      const CRYPTO = [
+        { id: "bitcoin", sym: "BTC", vs: "USD" },
+        { id: "ethereum", sym: "ETH", vs: "USD" },
+        { id: "solana", sym: "SOL", vs: "USD" },
+        { id: "cosmos", sym: "ATOM", vs: "USD" }, // Cosmos Hub
+      ];
+
+      // ---------- Утилиты ----------
+      const fmt = (n) => Number(n).toFixed(4);
+      function row(pair, value) {
+        const div = document.createElement("div");
+        div.className = "row";
+        div.innerHTML = `<span class="pair">${pair}</span><span class="val">${
+          value ?? "—"
+        }</span>`;
+        return div;
+      }
+
+      // ---------- Загрузка фиатных пар через exchangerate.host ----------
+      async function loadFiat() {
+        // по одной загрузке на каждую base (USD/EUR/CNY) с нужным quote
+        const results = await Promise.all(
+          FIAT_PAIRS.map(async ({ base, quote }) => {
+            const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
+              base
+            )}&symbols=${encodeURIComponent(quote)}`;
+            const res = await fetch(url, { cache: "no-store" });
+            if (!res.ok) throw new Error("Fiat HTTP " + res.status);
+            const data = await res.json();
+            const rate = data?.rates?.[quote];
+            return { pair: `${base}/${quote}`, rate, date: data?.date };
+          })
+        );
+        return results;
+      }
+
+      // ---------- Загрузка крипты через CoinGecko ----------
+      async function loadCrypto() {
+        const ids = CRYPTO.map((x) => x.id).join(",");
+        const vs = "usd";
+        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(
+          ids
+        )}&vs_currencies=${vs}`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error("Crypto HTTP " + res.status);
+        const data = await res.json();
+        const out = CRYPTO.map(({ id, sym, vs }) => {
+          const v = data?.[id]?.[vs.toLowerCase()];
+          return { pair: `${sym}/${vs}`, rate: v };
+        });
+        return out;
+      }
+
+      async function loadAll() {
+        const errorEl = document.getElementById("error");
+        const fiatList = document.getElementById("fiat-list");
+        const cryptoList = document.getElementById("crypto-list");
+        const updated = document.getElementById("updated");
+        errorEl.textContent = "";
+        fiatList.innerHTML = "";
+        cryptoList.innerHTML = "";
+
+        try {
+          const [fiat, crypto] = await Promise.all([loadFiat(), loadCrypto()]);
+
+          // Фиат
+          fiat.forEach(({ pair, rate }) =>
+            fiatList.appendChild(row(pair, rate ? fmt(rate) : "—"))
+          );
+
+          // Крипта
+          crypto.forEach(({ pair, rate }) =>
+            cryptoList.appendChild(row(pair, rate ? fmt(rate) : "—"))
+          );
+
+          updated.textContent = "Обновлено: " + new Date().toLocaleString();
+        } catch (e) {
+          errorEl.textContent = "Не удалось получить курсы. Попробуйте позже.";
+        }
+      }
+
+      tg?.MainButton.setText("Обновить").show().onClick(loadAll);
+      loadAll();
+    </script>
+  </body>
 </html>
