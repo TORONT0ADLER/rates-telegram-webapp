@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Курсы</title>
+    <title>Курсы и котировки</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
       :root {
-        --bg: #ffffff;
+        --bg: #fff;
         --fg: #111;
         --muted: #666;
         --card: #fff;
@@ -34,7 +34,7 @@
       }
       .wrap {
         padding: 16px;
-        max-width: 680px;
+        max-width: 720px;
         margin: 0 auto;
       }
       .card {
@@ -42,37 +42,32 @@
         border-radius: 14px;
         background: var(--card);
         box-shadow: 0 6px 20px var(--shadow);
-        margin-bottom: 14px;
       }
       h1 {
         margin: 0 0 12px;
         font-size: 18px;
-      }
-      h2 {
-        margin: 0 0 10px;
-        font-size: 16px;
-        opacity: 0.9;
       }
       .subtitle {
         margin: 0 0 12px;
         color: var(--muted);
         font-size: 13px;
       }
-      .row {
-        display: flex;
-        justify-content: space-between;
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px 12px;
         align-items: center;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--divider);
-      }
-      .row:last-child {
-        border-bottom: none;
       }
       .pair {
         font-weight: 600;
       }
       .val {
         font-variant-numeric: tabular-nums;
+      }
+      .hr {
+        height: 1px;
+        background: var(--divider);
+        margin: 12px 0;
       }
       .foot {
         margin-top: 10px;
@@ -87,17 +82,13 @@
   <body>
     <div class="wrap">
       <div class="card">
-        <h1>Курсы</h1>
+        <h1>Курсы и котировки</h1>
         <p class="subtitle">
           Нажмите «Обновить», чтобы подтянуть свежие значения.
         </p>
 
-        <h2>Фиат → RUB</h2>
-        <div id="fiat-list"></div>
-
-        <h2 style="margin-top: 12px">Крипто → USD</h2>
-        <div id="crypto-list"></div>
-
+        <div class="grid" id="list"></div>
+        <div class="hr"></div>
         <div class="foot" id="updated"></div>
         <div class="foot err" id="error"></div>
       </div>
@@ -111,92 +102,131 @@
         "data-theme",
         tg?.colorScheme === "dark" ? "dark" : "light"
       );
+      const fmt = (n, d = 4) =>
+        n == null || isNaN(n) ? "—" : Number(n).toFixed(d);
 
-      // ---------- Конфиг пар ----------
-      const FIAT_PAIRS = [
-        { base: "USD", quote: "RUB" },
-        { base: "EUR", quote: "RUB" },
-        { base: "CNY", quote: "RUB" }, // юань
-      ];
-      // CoinGecko ids -> tickers
-      const CRYPTO = [
-        { id: "bitcoin", sym: "BTC", vs: "USD" },
-        { id: "ethereum", sym: "ETH", vs: "USD" },
-        { id: "solana", sym: "SOL", vs: "USD" },
-        { id: "cosmos", sym: "ATOM", vs: "USD" }, // Cosmos Hub
-      ];
-
-      // ---------- Утилиты ----------
-      const fmt = (n) => Number(n).toFixed(4);
-      function row(pair, value) {
-        const div = document.createElement("div");
-        div.className = "row";
-        div.innerHTML = `<span class="pair">${pair}</span><span class="val">${
-          value ?? "—"
-        }</span>`;
-        return div;
-      }
-
-      // ---------- Загрузка фиатных пар через exchangerate.host ----------
-      async function loadFiat() {
-        // по одной загрузке на каждую base (USD/EUR/CNY) с нужным quote
-        const results = await Promise.all(
-          FIAT_PAIRS.map(async ({ base, quote }) => {
-            const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
-              base
-            )}&symbols=${encodeURIComponent(quote)}`;
-            const res = await fetch(url, { cache: "no-store" });
-            if (!res.ok) throw new Error("Fiat HTTP " + res.status);
-            const data = await res.json();
-            const rate = data?.rates?.[quote];
-            return { pair: `${base}/${quote}`, rate, date: data?.date };
-          })
-        );
-        return results;
-      }
-
-      // ---------- Загрузка крипты через CoinGecko ----------
-      async function loadCrypto() {
-        const ids = CRYPTO.map((x) => x.id).join(",");
-        const vs = "usd";
-        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(
-          ids
-        )}&vs_currencies=${vs}`;
+      // ---- ФИАТ (exchangerate.host) -----------------------------------------
+      async function fx(base, symbols) {
+        const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
+          base
+        )}&symbols=${encodeURIComponent(symbols.join(","))}`;
         const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) throw new Error("Crypto HTTP " + res.status);
-        const data = await res.json();
-        const out = CRYPTO.map(({ id, sym, vs }) => {
-          const v = data?.[id]?.[vs.toLowerCase()];
-          return { pair: `${sym}/${vs}`, rate: v };
-        });
-        return out;
+        if (!res.ok) throw new Error("FX HTTP " + res.status);
+        return res.json(); // { rates: { RUB:..., EUR:... }, date: 'YYYY-MM-DD' }
       }
 
+      // ---- CRYPTO (CoinGecko) -----------------------------------------------
+      async function cgSimple(ids, vs) {
+        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(
+          ids.join(",")
+        )}&vs_currencies=${encodeURIComponent(vs.join(","))}`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error("CG HTTP " + res.status);
+        return res.json(); // { bitcoin:{usd:..}, ethereum:{usd:..}, tether:{rub:..} }
+      }
+
+      // ---- Индексы/товары: Yahoo → fallback Stooq --------------------------
+      async function yahooLast(ticker) {
+        // пример: ^GSPC, BZ=F
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+          ticker
+        )}?range=1d&interval=1d`;
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error("YF " + r.status);
+        const j = await r.json();
+        const res = j?.chart?.result?.[0];
+        const close = res?.indicators?.quote?.[0]?.close?.at(-1);
+        return close ?? null;
+      }
+      async function stooqLast(symbol) {
+        // примеры: ^spx (S&P500), brn.f (Brent)
+        const url = `https://stooq.com/q/l/?s=${encodeURIComponent(
+          symbol
+        )}&i=d`;
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error("STQ " + r.status);
+        const text = await r.text(); // CSV: Symbol,Date,Time,Open,High,Low,Close,Volume
+        const line = text.trim().split("\n").at(-1);
+        const parts = line.split(",");
+        const close = parseFloat(parts[6]);
+        return isNaN(close) ? null : close;
+      }
+      async function getSP500USD() {
+        try {
+          return await yahooLast("^GSPC");
+        } catch (_) {}
+        try {
+          return await stooqLast("^spx");
+        } catch (_) {}
+        return null;
+      }
+      async function getBrentUSD() {
+        try {
+          return await yahooLast("BZ=F");
+        } catch (_) {}
+        try {
+          return await stooqLast("brn.f");
+        } catch (_) {}
+        return null;
+      }
+
+      // ---- Главная загрузка -------------------------------------------------
       async function loadAll() {
-        const errorEl = document.getElementById("error");
-        const fiatList = document.getElementById("fiat-list");
-        const cryptoList = document.getElementById("crypto-list");
-        const updated = document.getElementById("updated");
-        errorEl.textContent = "";
-        fiatList.innerHTML = "";
-        cryptoList.innerHTML = "";
+        const list = document.getElementById("list");
+        const errEl = document.getElementById("error");
+        const updEl = document.getElementById("updated");
+        list.innerHTML = "";
+        errEl.textContent = "";
 
         try {
-          const [fiat, crypto] = await Promise.all([loadFiat(), loadCrypto()]);
+          // 1) ФИАТ: USD/{RUB,EUR,JPY}, EUR/RUB, CNY/RUB
+          const [fxUsd, fxEur, fxCny] = await Promise.all([
+            fx("USD", ["RUB", "EUR", "JPY"]),
+            fx("EUR", ["RUB"]),
+            fx("CNY", ["RUB"]),
+          ]);
+          const usd_rub = fxUsd.rates.RUB;
+          const rows = [
+            ["USD/RUB", usd_rub],
+            ["EUR/RUB", fxEur.rates.RUB],
+            ["CNY/RUB", fxCny.rates.RUB],
+            ["USD/EUR", fxUsd.rates.EUR],
+            ["USD/JPY", fxUsd.rates.JPY],
+          ];
 
-          // Фиат
-          fiat.forEach(({ pair, rate }) =>
-            fiatList.appendChild(row(pair, rate ? fmt(rate) : "—"))
+          // 2) CRYPTO: BTC/USD, ETH/USD, USDT/RUB
+          const cg = await cgSimple(
+            ["bitcoin", "ethereum", "tether"],
+            ["usd", "rub"]
           );
+          rows.push(["BTC/USD", cg.bitcoin?.usd ?? null]);
+          rows.push(["ETH/USD", cg.ethereum?.usd ?? null]);
+          rows.push(["USDT/RUB", cg.tether?.rub ?? null]);
 
-          // Крипта
-          crypto.forEach(({ pair, rate }) =>
-            cryptoList.appendChild(row(pair, rate ? fmt(rate) : "—"))
-          );
+          // 3) Индекс и нефть
+          const [spxUsd, brentUsd] = await Promise.all([
+            getSP500USD(),
+            getBrentUSD(),
+          ]);
+          rows.push(["S&P500/USD", spxUsd]); // значение индекса в USD
+          const brentRub =
+            brentUsd != null && usd_rub != null ? brentUsd * usd_rub : null;
+          rows.push(["Brent/RUB", brentRub]);
 
-          updated.textContent = "Обновлено: " + new Date().toLocaleString();
+          // Рендер
+          for (const [pair, val] of rows) {
+            const k = document.createElement("div");
+            k.className = "pair";
+            k.textContent = pair;
+            const v = document.createElement("div");
+            v.className = "val";
+            v.textContent = fmt(val);
+            list.appendChild(k);
+            list.appendChild(v);
+          }
+          updEl.textContent = "Обновлено: " + new Date().toLocaleString();
         } catch (e) {
-          errorEl.textContent = "Не удалось получить курсы. Попробуйте позже.";
+          errEl.textContent = "Не удалось получить данные. Попробуйте позже.";
         }
       }
 
