@@ -1,158 +1,60 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Курсы и котировки</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-      :root {
-        --bg: #fff;
-        --fg: #111;
-        --muted: #666;
-        --card: #fff;
-        --shadow: rgba(0, 0, 0, 0.08);
-        --divider: rgba(0, 0, 0, 0.06);
-      }
-      body[data-theme="dark"] {
-        --bg: #0f0f10;
-        --fg: #f1f1f1;
-        --muted: #a0a0a0;
-        --card: #161719;
-        --shadow: rgba(0, 0, 0, 0.5);
-        --divider: rgba(255, 255, 255, 0.08);
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--fg);
-        font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Arial,
-          sans-serif;
-      }
-      .wrap {
-        padding: 16px;
-        max-width: 720px;
-        margin: 0 auto;
-      }
-      .card {
-        padding: 16px;
-        border-radius: 14px;
-        background: var(--card);
-        box-shadow: 0 6px 20px var(--shadow);
-      }
-      h1 {
-        margin: 0 0 12px;
-        font-size: 18px;
-      }
-      .subtitle {
-        margin: 0 0 12px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 10px 12px;
-        align-items: center;
-      }
-      .pair {
-        font-weight: 600;
-      }
-      .val {
-        font-variant-numeric: tabular-nums;
-      }
-      .hr {
-        height: 1px;
-        background: var(--divider);
-        margin: 12px 0;
-      }
-      .foot {
-        margin-top: 10px;
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .err {
-        color: #e74c3c;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="card">
-        <h1>Курсы и котировки</h1>
-        <p class="subtitle">
-          Нажмите «Обновить», чтобы подтянуть свежие значения.
-        </p>
+<script>
+  const tg = window.Telegram?.WebApp;
+  tg?.ready();
+  tg?.expand();
+  document.body.setAttribute(
+    "data-theme",
+    tg?.colorScheme === "dark" ? "dark" : "light"
+  );
 
-        <div class="grid" id="list"></div>
-        <div class="hr"></div>
-        <div class="foot" id="updated"></div>
-        <div class="foot err" id="error"></div>
-      </div>
-    </div>
+  function fmt(key, val) {
+    if (val == null || isNaN(val)) return "—";
+    if (key.includes("JPY")) return val.toFixed(2);
+    if (key.includes("S&P") || key.includes("Brent")) return val.toFixed(1);
+    if (key.includes("BTC")) return val.toFixed(0);
+    return val.toFixed(2);
+  }
 
-    <script>
-      const tg = window.Telegram?.WebApp;
-      tg?.ready();
-      tg?.expand();
-      document.body.setAttribute(
-        "data-theme",
-        tg?.colorScheme === "dark" ? "dark" : "light"
-      );
+  async function loadAll() {
+    const list = document.getElementById("list");
+    const errEl = document.getElementById("error");
+    const updEl = document.getElementById("updated");
+    list.innerHTML = "";
+    errEl.textContent = "";
 
-      const fmt = (n, d = 4) =>
-        n == null || isNaN(n) ? "—" : Number(n).toFixed(d);
+    try {
+      const res = await fetch("./api/rates", { cache: "no-store" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "rates error");
 
-      async function loadAll() {
-        const list = document.getElementById("list");
-        const errEl = document.getElementById("error");
-        const updEl = document.getElementById("updated");
-        list.innerHTML = "";
-        errEl.textContent = "";
+      const order = [
+        "USD/RUB",
+        "EUR/RUB",
+        "CNY/RUB",
+        "USD/JPY",
+        "S&P500/USD",
+        "BTC/USD",
+        "ETH/USD",
+        "Brent/RUB",
+      ];
 
-        try {
-          const res = await fetch("./api/rates", { cache: "no-store" });
-          const data = await res.json();
-
-          if (!data.ok) throw new Error(data.error || "rates error");
-
-          const order = [
-            "USD/RUB",
-            "EUR/RUB",
-            "CNY/RUB",
-            "USD/EUR",
-            "USD/JPY",
-            "S&P500/USD",
-            "BTC/USD",
-            "ETH/USD",
-            "USDT/RUB",
-            "Brent/RUB",
-          ];
-
-          for (const key of order) {
-            const k = document.createElement("div");
-            k.className = "pair";
-            k.textContent = key;
-            const v = document.createElement("div");
-            v.className = "val";
-            v.textContent = fmt(data.pairs[key], key.includes("JPY") ? 2 : 4);
-            list.appendChild(k);
-            list.appendChild(v);
-          }
-
-          updEl.textContent =
-            "Обновлено: " +
-            new Date(data.updated || Date.now()).toLocaleString();
-        } catch (e) {
-          errEl.textContent = "Не удалось получить данные. Попробуйте позже.";
-        }
+      for (const key of order) {
+        const k = document.createElement("div");
+        k.className = "pair";
+        k.textContent = key;
+        const v = document.createElement("div");
+        v.className = "val";
+        v.textContent = fmt(key, data.pairs[key]);
+        list.appendChild(k);
+        list.appendChild(v);
       }
+      updEl.textContent =
+        "Обновлено: " + new Date(data.updated || Date.now()).toLocaleString();
+    } catch (e) {
+      errEl.textContent = "Не удалось получить данные. Попробуйте позже.";
+    }
+  }
 
-      tg?.MainButton.setText("Обновить").show().onClick(loadAll);
-      loadAll();
-    </script>
-  </body>
-</html>
+  tg?.MainButton.setText("Обновить").onClick(loadAll).show();
+  loadAll();
+</script>

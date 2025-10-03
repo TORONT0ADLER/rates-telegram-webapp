@@ -1,5 +1,4 @@
 // webapp/api/rates.js
-// Работает как Edge Function (Request -> Response)
 export const config = { runtime: "edge" };
 
 const jfetch = async (url) => {
@@ -13,13 +12,39 @@ const tfetch = async (url) => {
   return r.text();
 };
 
-const fx = async (base, symbols) => {
-  const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
-    base
-  )}&symbols=${encodeURIComponent(symbols.join(","))}`;
-  return jfetch(url); // { rates: {...}, date: 'YYYY-MM-DD' }
-};
+// ---- FIAT: primary open.er-api.com, fallback exchangerate.host
+async function fxUSD() {
+  // 1) primary
+  try {
+    // DOC: https://open.er-api.com/v6/latest/USD
+    const u = "https://open.er-api.com/v6/latest/USD";
+    const j = await jfetch(u);
+    if (j?.result === "success" && j?.rates) {
+      return {
+        USD_RUB: j.rates.RUB ?? null,
+        USD_EUR: j.rates.EUR ?? null,
+        USD_JPY: j.rates.JPY ?? null,
+        USD_CNY: j.rates.CNY ?? null,
+      };
+    }
+  } catch (_) {}
+  // 2) fallback
+  try {
+    const u =
+      "https://api.exchangerate.host/latest?base=USD&symbols=RUB,EUR,JPY,CNY";
+    const j = await jfetch(u); // { rates: {RUB,EUR,JPY,CNY} }
+    const r = j?.rates || {};
+    return {
+      USD_RUB: r.RUB ?? null,
+      USD_EUR: r.EUR ?? null,
+      USD_JPY: r.JPY ?? null,
+      USD_CNY: r.CNY ?? null,
+    };
+  } catch (_) {}
+  return { USD_RUB: null, USD_EUR: null, USD_JPY: null, USD_CNY: null };
+}
 
+// ---- Yahoo/Stooq helpers
 const yahooClose = async (ticker) => {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     ticker
@@ -39,23 +64,25 @@ const stooqClose = async (symbol) => {
 
 export default async function handler() {
   try {
-    // 1) Фиат
-    const [fxUsd, fxEur, fxCny] = await Promise.all([
-      fx("USD", ["RUB", "EUR", "JPY"]),
-      fx("EUR", ["RUB"]),
-      fx("CNY", ["RUB"]),
-    ]);
-    const USD_RUB = fxUsd?.rates?.RUB ?? null;
+    // 1) FIAT (всё от USD и кросс-курсы)
+    const { USD_RUB, USD_EUR, USD_JPY, USD_CNY } = await fxUSD();
+    const EUR_RUB =
+      USD_RUB != null && USD_EUR != null ? USD_RUB / USD_EUR : null; // RUB per EUR
+    const CNY_RUB =
+      USD_RUB != null && USD_CNY != null ? USD_RUB / USD_CNY : null; // RUB per CNY
 
-    // 2) Крипта
-    const cg = await jfetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether&vs_currencies=usd,rub"
-    );
-    const BTC_USD = cg?.bitcoin?.usd ?? null;
-    const ETH_USD = cg?.ethereum?.usd ?? null;
-    const USDT_RUB = cg?.tether?.rub ?? null;
+    // 2) CRYPTO (CoinGecko)
+    let BTC_USD = null,
+      ETH_USD = null;
+    try {
+      const cg = await jfetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
+      );
+      BTC_USD = cg?.bitcoin?.usd ?? null;
+      ETH_USD = cg?.ethereum?.usd ?? null;
+    } catch (_) {}
 
-    // 3) Индекс и нефть (Yahoo → Stooq)
+    // 3) Индекс S&P500 и Brent (Yahoo → Stooq)
     let SPX_USD = null;
     try {
       SPX_USD = await yahooClose("^GSPC");
@@ -79,16 +106,15 @@ export default async function handler() {
     const BRENT_RUB =
       BRENT_USD != null && USD_RUB != null ? BRENT_USD * USD_RUB : null;
 
+    // Собираем пары (убрал USD/EUR и USDT/RUB по твоей просьбе)
     const pairs = {
       "USD/RUB": USD_RUB,
-      "EUR/RUB": fxEur?.rates?.RUB ?? null,
-      "CNY/RUB": fxCny?.rates?.RUB ?? null,
-      "USD/EUR": fxUsd?.rates?.EUR ?? null,
-      "USD/JPY": fxUsd?.rates?.JPY ?? null,
+      "EUR/RUB": EUR_RUB,
+      "CNY/RUB": CNY_RUB,
+      "USD/JPY": USD_JPY,
       "S&P500/USD": SPX_USD,
       "BTC/USD": BTC_USD,
       "ETH/USD": ETH_USD,
-      "USDT/RUB": USDT_RUB,
       "Brent/RUB": BRENT_RUB,
     };
 
