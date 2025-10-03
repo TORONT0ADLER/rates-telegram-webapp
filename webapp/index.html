@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -96,65 +96,82 @@
     </div>
 
     <script>
-      const tg = window.Telegram?.WebApp;
-      tg?.ready();
-      tg?.expand();
-      document.body.setAttribute(
-        "data-theme",
-        tg?.colorScheme === "dark" ? "dark" : "light"
-      );
+      (function initWhenReady() {
+        const start = () => {
+          const tg = window.Telegram?.WebApp;
+          tg?.ready();
+          tg?.expand();
 
-      function fmt(key, val) {
-        if (val == null || isNaN(val)) return "—";
-        if (key.includes("JPY")) return val.toFixed(2);
-        if (key.includes("S&P") || key.includes("Brent")) return val.toFixed(1);
-        if (key.includes("BTC")) return val.toFixed(0);
-        return val.toFixed(2);
-      }
-
-      async function loadAll() {
-        const list = document.getElementById("list");
-        const errEl = document.getElementById("error");
-        const updEl = document.getElementById("updated");
-        list.innerHTML = "";
-        errEl.textContent = "";
-
-        try {
-          const res = await fetch("./api/rates", { cache: "no-store" });
-          const data = await res.json();
-          if (!data.ok) throw new Error(data.error || "rates error");
-
-          const order = [
-            "USD/RUB",
-            "EUR/RUB",
-            "CNY/RUB",
-            "USD/JPY",
-            "S&P500/USD",
-            "BTC/USD",
-            "ETH/USD",
-            "Brent/RUB",
-          ];
-
-          for (const key of order) {
-            const k = document.createElement("div");
-            k.className = "pair";
-            k.textContent = key;
-            const v = document.createElement("div");
-            v.className = "val";
-            v.textContent = fmt(key, data.pairs[key]);
-            list.appendChild(k);
-            list.appendChild(v);
+          // тема
+          if (document.body) {
+            document.body.setAttribute(
+              "data-theme",
+              tg?.colorScheme === "dark" ? "dark" : "light"
+            );
           }
-          updEl.textContent =
-            "Обновлено: " +
-            new Date(data.updated || Date.now()).toLocaleString();
-        } catch (e) {
-          errEl.textContent = "Не удалось получить данные. Попробуйте позже.";
-        }
-      }
 
-      tg?.MainButton.setText("Обновить").onClick(loadAll).show();
-      loadAll();
+          // форматирование
+          function fmt(key, val) {
+            if (val == null || isNaN(val)) return "—";
+            if (key.includes("JPY")) return Number(val).toFixed(2);
+            if (key.includes("S&P") || key.includes("Brent"))
+              return Number(val).toFixed(1);
+            if (key.includes("BTC")) return Number(val).toFixed(0);
+            return Number(val).toFixed(2);
+          }
+
+          async function loadAll() {
+            const list = document.getElementById("list");
+            const errEl = document.getElementById("error");
+            const updEl = document.getElementById("updated");
+            list.innerHTML = "";
+            errEl.textContent = "";
+
+            try {
+              const res = await fetch("./api/rates", { cache: "no-store" });
+              const data = await res.json();
+              if (!data.ok) throw new Error(data.error || "rates error");
+
+              const order = [
+                "USD/RUB",
+                "EUR/RUB",
+                "CNY/RUB",
+                "USD/JPY",
+                "S&P500/USD",
+                "BTC/USD",
+                "ETH/USD",
+                "Brent/RUB",
+              ];
+
+              for (const key of order) {
+                const k = document.createElement("div");
+                k.className = "pair";
+                k.textContent = key;
+                const v = document.createElement("div");
+                v.className = "val";
+                v.textContent = fmt(key, data.pairs[key]);
+                list.appendChild(k);
+                list.appendChild(v);
+              }
+              updEl.textContent =
+                "Обновлено: " +
+                new Date(data.updated || Date.now()).toLocaleString();
+            } catch (e) {
+              errEl.textContent =
+                "Не удалось получить данные. Попробуйте позже.";
+            }
+          }
+
+          tg?.MainButton.setText("Обновить").onClick(loadAll).show();
+          loadAll();
+        };
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", start, { once: true });
+        } else {
+          start();
+        }
+      })();
     </script>
   </body>
 </html>
