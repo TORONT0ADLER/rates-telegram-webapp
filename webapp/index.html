@@ -34,29 +34,57 @@
       }
       .wrap {
         padding: 16px;
-        max-width: 720px;
+        max-width: 1100px;
         margin: 0 auto;
       }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      .subtitle {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      /* колонки */
+      .cols {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      @media (min-width: 640px) {
+        .cols {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (min-width: 960px) {
+        .cols {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
       .card {
-        padding: 16px;
+        padding: 14px;
         border-radius: 14px;
         background: var(--card);
         box-shadow: 0 6px 20px var(--shadow);
       }
-      h1 {
-        margin: 0 0 12px;
-        font-size: 18px;
+      .section-title {
+        margin: 0 0 10px;
+        font-weight: 700;
+        font-size: 15px;
+        opacity: 0.9;
       }
-      .subtitle {
-        margin: 0 0 12px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .grid {
+      .row {
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 10px 12px;
-        align-items: center;
+        gap: 10px;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--divider);
+      }
+      .row:last-child {
+        border-bottom: none;
       }
       .pair {
         font-weight: 600;
@@ -64,13 +92,8 @@
       .val {
         font-variant-numeric: tabular-nums;
       }
-      .hr {
-        height: 1px;
-        background: var(--divider);
-        margin: 12px 0;
-      }
       .foot {
-        margin-top: 10px;
+        margin-top: 12px;
         color: var(--muted);
         font-size: 12px;
       }
@@ -82,77 +105,94 @@
   </head>
   <body>
     <div class="wrap">
-      <div class="card">
-        <h1>Курсы и котировки</h1>
-        <p class="subtitle">
-          Нажмите «Обновить», чтобы подтянуть свежие значения.
-        </p>
+      <h1>Курсы и котировки</h1>
+      <p class="subtitle">
+        Нажмите «Обновить», чтобы подтянуть свежие значения.
+      </p>
 
-        <div class="grid" id="list"></div>
-        <div class="hr"></div>
-        <div class="foot" id="updated"></div>
-        <div class="foot err" id="error"></div>
+      <div class="cols">
+        <div class="card" id="fiat">
+          <div class="section-title">Фиат</div>
+          <div class="rows"></div>
+        </div>
+
+        <div class="card" id="crypto">
+          <div class="section-title">Криптовалюты</div>
+          <div class="rows"></div>
+        </div>
+
+        <div class="card" id="spx">
+          <div class="section-title">S&amp;P 500</div>
+          <div class="rows"></div>
+        </div>
+
+        <div class="card" id="oil">
+          <div class="section-title">Нефть Brent</div>
+          <div class="rows"></div>
+        </div>
       </div>
+
+      <div class="foot" id="updated"></div>
+      <div class="foot err" id="error"></div>
     </div>
 
     <script>
-      (function initWhenReady() {
+      (function () {
         const start = () => {
           const tg = window.Telegram?.WebApp;
           tg?.ready();
           tg?.expand();
+          document.body.setAttribute(
+            "data-theme",
+            tg?.colorScheme === "dark" ? "dark" : "light"
+          );
 
-          // тема
-          if (document.body) {
-            document.body.setAttribute(
-              "data-theme",
-              tg?.colorScheme === "dark" ? "dark" : "light"
-            );
-          }
-
-          // форматирование
-          function fmt(key, val) {
+          const fmt = (key, val) => {
             if (val == null || isNaN(val)) return "—";
             if (key.includes("JPY")) return Number(val).toFixed(2);
             if (key.includes("S&P") || key.includes("Brent"))
               return Number(val).toFixed(1);
             if (key.includes("BTC")) return Number(val).toFixed(0);
             return Number(val).toFixed(2);
+          };
+
+          const fiatPairs = ["USD/RUB", "EUR/RUB", "CNY/RUB", "USD/JPY"];
+          const cryptoPairs = ["BTC/USD", "ETH/USD"];
+          const spxPairs = ["S&P500/USD"];
+          const oilPairs = ["Brent/RUB"];
+
+          function renderRows(container, pairs, data) {
+            const box = container.querySelector(".rows");
+            box.innerHTML = "";
+            for (const key of pairs) {
+              const row = document.createElement("div");
+              row.className = "row";
+              const k = document.createElement("div");
+              k.className = "pair";
+              k.textContent = key;
+              const v = document.createElement("div");
+              v.className = "val";
+              v.textContent = fmt(key, data.pairs[key]);
+              row.appendChild(k);
+              row.appendChild(v);
+              box.appendChild(row);
+            }
           }
 
           async function loadAll() {
-            const list = document.getElementById("list");
             const errEl = document.getElementById("error");
             const updEl = document.getElementById("updated");
-            list.innerHTML = "";
             errEl.textContent = "";
-
             try {
               const res = await fetch("./api/rates", { cache: "no-store" });
               const data = await res.json();
               if (!data.ok) throw new Error(data.error || "rates error");
 
-              const order = [
-                "USD/RUB",
-                "EUR/RUB",
-                "CNY/RUB",
-                "USD/JPY",
-                "S&P500/USD",
-                "BTC/USD",
-                "ETH/USD",
-                "Brent/RUB",
-              ];
+              renderRows(document.getElementById("fiat"), fiatPairs, data);
+              renderRows(document.getElementById("crypto"), cryptoPairs, data);
+              renderRows(document.getElementById("spx"), spxPairs, data);
+              renderRows(document.getElementById("oil"), oilPairs, data);
 
-              for (const key of order) {
-                const k = document.createElement("div");
-                k.className = "pair";
-                k.textContent = key;
-                const v = document.createElement("div");
-                v.className = "val";
-                v.textContent = fmt(key, data.pairs[key]);
-                list.appendChild(k);
-                list.appendChild(v);
-              }
               updEl.textContent =
                 "Обновлено: " +
                 new Date(data.updated || Date.now()).toLocaleString();
