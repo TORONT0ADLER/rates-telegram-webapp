@@ -28,6 +28,7 @@ async function fxUSD() {
       };
     }
   } catch (_) {}
+
   // 2) fallback
   try {
     const u =
@@ -41,6 +42,7 @@ async function fxUSD() {
       USD_CNY: r.CNY ?? null,
     };
   } catch (_) {}
+
   return { USD_RUB: null, USD_EUR: null, USD_JPY: null, USD_CNY: null };
 }
 
@@ -53,6 +55,7 @@ const yahooClose = async (ticker) => {
   const res = j?.chart?.result?.[0];
   return res?.indicators?.quote?.[0]?.close?.at(-1) ?? null;
 };
+
 const stooqClose = async (symbol) => {
   const text = await tfetch(
     `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&i=d`
@@ -66,11 +69,13 @@ export default async function handler() {
   try {
     // 1) FIAT (всё от USD и кросс-курсы)
     const { USD_RUB, USD_EUR, USD_JPY, USD_CNY } = await fxUSD();
+
     const EUR_RUB =
       USD_RUB != null && USD_EUR != null ? USD_RUB / USD_EUR : null; // RUB per EUR
+
     const CNY_RUB =
       USD_RUB != null && USD_CNY != null ? USD_RUB / USD_CNY : null; // RUB per CNY
-    // Новая пара JPY/RUB
+
     const JPY_RUB =
       USD_RUB != null && USD_JPY != null ? USD_RUB / USD_JPY : null; // RUB per JPY
 
@@ -85,7 +90,7 @@ export default async function handler() {
       ETH_USD = cg?.ethereum?.usd ?? null;
     } catch (_) {}
 
-    // 3) Индекс S&P500 и Brent (Yahoo → Stooq)
+    // 3) Индекс S&P500, Brent и золото (Yahoo → Stooq)
     let SPX_USD = null;
     try {
       SPX_USD = await yahooClose("^GSPC");
@@ -106,16 +111,32 @@ export default async function handler() {
       } catch {}
     }
 
+    // Золото к доллару (XAU/USD)
+    let GOLD_USD = null;
+    try {
+      GOLD_USD = await yahooClose("GC=F"); // COMEX Gold futures
+    } catch {}
+    if (GOLD_USD == null) {
+      try {
+        GOLD_USD = await stooqClose("GC.F");
+      } catch {}
+    }
+
+    // S&P500 в рублях
+    const SPX_RUB =
+      SPX_USD != null && USD_RUB != null ? SPX_USD * USD_RUB : null;
+
     // Собираем пары
     const pairs = {
       "USD/RUB": USD_RUB,
       "EUR/RUB": EUR_RUB,
       "CNY/RUB": CNY_RUB,
-      "JPY/RUB": JPY_RUB,     // было USD/JPY, теперь JPY/RUB
-      "S&P500/USD": SPX_USD,
+      "JPY/RUB": JPY_RUB,
+      "S&P500/RUB": SPX_RUB,
       "BTC/USD": BTC_USD,
       "ETH/USD": ETH_USD,
-      "Brent/USD": BRENT_USD, // было Brent/RUB, теперь Brent/USD
+      "Brent/USD": BRENT_USD,
+      "XAU/USD": GOLD_USD, // золото в долларах
     };
 
     return new Response(
@@ -133,6 +154,7 @@ export default async function handler() {
       headers: {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
+        "access-control-allow-origin": "*",
       },
       status: 200,
     });
