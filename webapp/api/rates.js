@@ -132,7 +132,7 @@ export default async function handler() {
       "EUR/RUB": EUR_RUB,
       "CNY/RUB": CNY_RUB,
       "JPY/RUB": JPY_RUB,
-      "S&P500/RUB": SPX_RUB,
+      "S&P500/USD": SPX_USD, 
       "BTC/USD": BTC_USD,
       "ETH/USD": ETH_USD,
       "Brent/USD": BRENT_USD,
