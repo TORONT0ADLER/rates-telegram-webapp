@@ -70,6 +70,9 @@ export default async function handler() {
       USD_RUB != null && USD_EUR != null ? USD_RUB / USD_EUR : null; // RUB per EUR
     const CNY_RUB =
       USD_RUB != null && USD_CNY != null ? USD_RUB / USD_CNY : null; // RUB per CNY
+    // Новая пара JPY/RUB
+    const JPY_RUB =
+      USD_RUB != null && USD_JPY != null ? USD_RUB / USD_JPY : null; // RUB per JPY
 
     // 2) CRYPTO (CoinGecko)
     let BTC_USD = null,
@@ -103,19 +106,16 @@ export default async function handler() {
       } catch {}
     }
 
-    const BRENT_RUB =
-      BRENT_USD != null && USD_RUB != null ? BRENT_USD * USD_RUB : null;
-
-    // Собираем пары (убрал USD/EUR и USDT/RUB по твоей просьбе)
+    // Собираем пары
     const pairs = {
       "USD/RUB": USD_RUB,
       "EUR/RUB": EUR_RUB,
       "CNY/RUB": CNY_RUB,
-      "USD/JPY": USD_JPY,
+      "JPY/RUB": JPY_RUB,     // было USD/JPY, теперь JPY/RUB
       "S&P500/USD": SPX_USD,
       "BTC/USD": BTC_USD,
       "ETH/USD": ETH_USD,
-      "Brent/RUB": BRENT_RUB,
+      "Brent/USD": BRENT_USD, // было Brent/RUB, теперь Brent/USD
     };
 
     return new Response(
